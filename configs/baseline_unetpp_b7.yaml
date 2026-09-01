@@ -7,6 +7,7 @@ data:
   regions: [nebraska, north_alabama, bangladesh, redrivernorth]  # train = all non-Florence tiles (~25k), per baseline
   val_regions: [florence]
   bands: [vv, vh, ratio]        # ratio = (VV+VH)/(VV-VH), per Ghosh et al. (best combination)
+  ratio_clip: 10.0              # stabilize and scale the ratio channel to [-1, 1]
   image_size: 256
   stratified_flood_fraction: 0.5   # >=50% flood-positive tiles per batch (baseline protocol)
   rotation_aug: true               # 90/180/270 deg rotations

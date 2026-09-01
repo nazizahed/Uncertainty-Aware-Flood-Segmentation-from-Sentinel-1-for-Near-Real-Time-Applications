@@ -24,11 +24,14 @@ def main():
                     help="N stochastic passes; 0 = deterministic eval")
     ap.add_argument("--batch-size", type=int, default=16)
     ap.add_argument("--save-maps", default=None)
+    ap.add_argument("--uq-max-pixels", type=int, default=2_000_000,
+                    help="maximum stratified-across-batches pixels for calibration/UQ curves")
     ap.add_argument("--out", default=None, help="write results JSON here")
     args = ap.parse_args()
 
     result = evaluate(args.checkpoint, args.regions, mc_passes=args.mc_passes,
-                      batch_size=args.batch_size, save_maps_dir=args.save_maps)
+                      batch_size=args.batch_size, save_maps_dir=args.save_maps,
+                      uq_max_pixels=args.uq_max_pixels)
     printable = {k: v for k, v in result.items() if k != "per_tile_iou"}
     print(json.dumps(printable, indent=2, default=float))
     if args.out:

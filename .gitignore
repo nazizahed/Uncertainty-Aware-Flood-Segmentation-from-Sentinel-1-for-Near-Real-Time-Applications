@@ -2,18 +2,22 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
 .venv/
 venv/
 
 # data & artifacts (never commit large data or weights)
-data/
-runs/
-checkpoints/
+/data/
+/runs/
+/checkpoints/
+/outputs/
 *.pt
 *.pth
 *.ckpt
 *.onnx
-wandb/
+/wandb/
 *.tfevents*
 
 # notebooks
