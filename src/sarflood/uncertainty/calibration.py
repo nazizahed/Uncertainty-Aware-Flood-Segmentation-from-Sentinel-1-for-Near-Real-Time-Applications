@@ -11,8 +11,8 @@ def expected_calibration_error(probs: np.ndarray, labels: np.ndarray, n_bins: in
     probs, labels = probs.ravel(), labels.ravel().astype(bool)
     edges = np.linspace(0, 1, n_bins + 1)
     ece, n = 0.0, len(probs)
-    for lo, hi in zip(edges[:-1], edges[1:]):
-        m = (probs > lo) & (probs <= hi)
+    for index, (lo, hi) in enumerate(zip(edges[:-1], edges[1:])):
+        m = (probs >= lo) & (probs < hi) if index < n_bins - 1 else (probs >= lo) & (probs <= hi)
         if m.any():
             ece += m.sum() / n * abs(labels[m].mean() - probs[m].mean())
     return float(ece)
@@ -39,8 +39,8 @@ def reliability_bins(probs: np.ndarray, labels: np.ndarray, n_bins: int = 15):
     probs, labels = probs.ravel(), labels.ravel().astype(bool)
     edges = np.linspace(0, 1, n_bins + 1)
     centers, obs, conf, cnt = [], [], [], []
-    for lo, hi in zip(edges[:-1], edges[1:]):
-        m = (probs > lo) & (probs <= hi)
+    for index, (lo, hi) in enumerate(zip(edges[:-1], edges[1:])):
+        m = (probs >= lo) & (probs < hi) if index < n_bins - 1 else (probs >= lo) & (probs <= hi)
         if m.any():
             centers.append((lo + hi) / 2)
             obs.append(labels[m].mean())

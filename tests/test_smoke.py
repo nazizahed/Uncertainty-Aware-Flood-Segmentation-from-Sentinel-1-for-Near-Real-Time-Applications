@@ -61,9 +61,12 @@ def test_metrics_and_uq():
 
     cov, risk = risk_coverage_curve(probs, labels, unc)
     assert len(cov) == len(risk) and np.all(np.diff(cov) <= 0)
-    assert np.isfinite(aurc(cov, risk))
+    assert aurc(cov, risk) >= 0
     _, _, _, se = sparsification_error(probs, labels, unc)
-    assert np.isfinite(se)
+    assert se >= -1e-12
+
+    # Calibration bins include exact boundary probabilities.
+    assert expected_calibration_error(np.array([0.0, 1.0]), np.array([0.0, 1.0])) == 0
 
     a = rng.random(200)
     b = a - 0.05 * rng.random(200)

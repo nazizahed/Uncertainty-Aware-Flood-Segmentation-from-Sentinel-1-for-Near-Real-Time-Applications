@@ -15,7 +15,7 @@ def stochastic_forward_passes(
 ) -> torch.Tensor:
     """N stochastic forward passes with dropout active.
 
-    Returns tensor of shape (N, 1, H, W) — per-pass flood probabilities.
+    Returns ``(N, B, 1, H, W)`` per-pass flood probabilities.
     """
     enable_mc_dropout(model)
     probs = []
@@ -29,7 +29,7 @@ def stochastic_forward_passes(
 def ensemble_forward_passes(
     models: list[nn.Module], image: torch.Tensor
 ) -> torch.Tensor:
-    """One forward pass per ensemble member. Returns (N_members, 1, H, W)."""
+    """One forward pass per ensemble member. Returns ``(M, B, 1, H, W)``."""
     probs = []
     for m in models:
         m.eval()
@@ -52,4 +52,5 @@ def summarize_passes(probs: torch.Tensor) -> dict[str, torch.Tensor]:
 
 
 def passes_to_numpy(probs: torch.Tensor) -> np.ndarray:
-    return probs.squeeze(1).cpu().numpy()  # (N,H,W)
+    """Convert stacked passes to NumPy without dropping batch dimensions."""
+    return probs.cpu().numpy()

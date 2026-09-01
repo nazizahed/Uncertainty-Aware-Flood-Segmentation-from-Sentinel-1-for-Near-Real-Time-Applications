@@ -37,6 +37,8 @@ def block_bootstrap_iou_delta(
     a, b = np.asarray(iou_a, float), np.asarray(iou_b, float)
     valid = ~(np.isnan(a) | np.isnan(b))
     d = (a - b)[valid]
+    if not len(d):
+        return {"mean_delta": float("nan"), "ci95": [float("nan"), float("nan")]}
     boots = np.array([d[rng.integers(0, len(d), len(d))].mean() for _ in range(n_boot)])
     return {
         "mean_delta": float(d.mean()),

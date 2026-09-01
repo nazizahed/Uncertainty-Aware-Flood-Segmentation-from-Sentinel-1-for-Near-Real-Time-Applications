@@ -8,6 +8,7 @@ data:
   regions: [nebraska, north_alabama, bangladesh, redrivernorth]
   val_regions: [florence]
   bands: [vv, vh, ratio]
+  ratio_clip: 10.0
   image_size: 256
   stratified_flood_fraction: 0.5
   rotation_aug: true

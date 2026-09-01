@@ -33,7 +33,8 @@ def risk_coverage_curve(
 
 def aurc(coverages: np.ndarray, risks: np.ndarray) -> float:
     """Area Under the Risk-Coverage curve (lower is better)."""
-    return float(_trapezoid(risks, coverages))
+    order = np.argsort(coverages)
+    return float(_trapezoid(risks[order], coverages[order]))
 
 
 def sparsification_error(
@@ -43,5 +44,6 @@ def sparsification_error(
     cov, risk_model = risk_coverage_curve(probs, labels, uncertainty, n_steps)
     oracle_unc = np.abs(probs - labels)  # oracle: uncertainty == true error magnitude
     _, risk_oracle = risk_coverage_curve(probs, labels, oracle_unc, n_steps)
-    se = float(_trapezoid(risk_model - risk_oracle, cov))
+    order = np.argsort(cov)
+    se = float(_trapezoid((risk_model - risk_oracle)[order], cov[order]))
     return cov, risk_model, risk_oracle, se

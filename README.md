@@ -1,128 +1,176 @@
 # Small Models, Honest Maps
 
-**Uncertainty-Aware Lightweight Flood Segmentation from Sentinel-1** (`sar-flood-uq`)
+**Uncertainty-Aware Flood Segmentation from Sentinel-1 for Near-Real-Time Applications**
 
-Independent research project building on Ghosh et al. (2024), *"Automatic Flood Detection from
-Sentinel-1 Data Using a Nested UNet Model and a NASA Benchmark Dataset"*, PFG 92:1–18,
-[DOI: 10.1007/s41064-024-00275-1](https://doi.org/10.1007/s41064-024-00275-1).
+[![Tests](https://github.com/nazizahed/Uncertainty-Aware-Flood-Segmentation-from-Sentinel-1-for-Near-Real-Time-Applications/actions/workflows/tests.yml/badge.svg)](https://github.com/nazizahed/Uncertainty-Aware-Flood-Segmentation-from-Sentinel-1-for-Near-Real-Time-Applications/actions/workflows/tests.yml)
 
-The project targets three questions:
+> **Development status:** this independent research project is under active
+> development. The data pipeline, model factory, training loop, uncertainty
+> utilities, evaluation code, configurations, and Colab entry point are
+> implemented. Full baseline replication, efficiency benchmarks, ensemble
+> experiments, and cross-region results are still pending. This repository does
+> not yet claim original model-performance or near-real-time latency results.
 
-1. **Efficiency** — where is the accuracy–efficiency Pareto frontier (IoU vs. params / FLOPs /
-   latency) for Sentinel-1 flood segmentation on the NASA/IEEE GRSS (ETCI 2021) benchmark?
-2. **Uncertainty** — can pixel-wise uncertainty (deep ensembles / MC dropout), made affordable
-   by lightweight encoders, be *exploited operationally* via selective prediction
-   (risk–coverage analysis), and does it localize known SAR failure modes?
-3. **Generalization** — do lightweight + UQ models hold up cross-regionally
-   (Spain 2019, Kerala 2018, Bihar 2021, Vietnam 2020)?
+The project investigates whether lightweight semantic-segmentation models can
+produce useful Sentinel-1 flood maps while making their uncertainty explicit.
+It builds on Ghosh et al. (2024), [*Automatic Flood Detection from Sentinel-1
+Data Using a Nested UNet Model and a NASA Benchmark
+Dataset*](https://doi.org/10.1007/s41064-024-00275-1), while using a PyTorch
+implementation and an explicitly staged evaluation plan.
 
-## Why PyTorch
+## Research questions
 
-The baseline was implemented in TensorFlow/Keras. We use **PyTorch +
-[segmentation-models-pytorch](https://github.com/qubvel-org/segmentation_models.pytorch)**
-because it gives one-line access to UNet/UNet++ with every encoder in the study
-(ResNet-34, Inception-v3, EfficientNet-B0–B7, MobileNetV3, MiT/SegFormer), clean hooks for
-dropout injection (MC dropout), and easy ONNX/TensorRT export for the deployment analysis.
+1. **Efficiency:** where is the accuracy-efficiency frontier across model size,
+   FLOPs, and CPU/GPU inference latency?
+2. **Uncertainty:** do deep ensembles or MC dropout produce calibrated
+   uncertainty that supports selective prediction through risk-coverage
+   analysis?
+3. **Generalization:** how do candidate models and uncertainty estimates behave
+   when transferred to geographically distinct flood events?
+
+Near-real-time use is a design objective. It will only be claimed after latency,
+throughput, preprocessing, and end-to-end deployment measurements are complete.
+
+## Implemented workflow
+
+```mermaid
+flowchart TD
+    A["ETCI 2021 VV, VH, labels"] --> B["Paired tiles + ratio channel"]
+    B --> C["UNet / UNet++ training"]
+    C --> D["Deterministic or stochastic inference"]
+    D --> E["Segmentation + calibration metrics"]
+    E --> F["Risk-coverage and uncertainty maps"]
+```
+
+| Component | Current state |
+| --- | --- |
+| ETCI event discovery and VV/VH/label pairing | Implemented and synthetically tested |
+| Stabilized polarization-ratio channel | Implemented and configurable |
+| Flood-stratified batches and 90-degree rotations | Implemented |
+| UNet and UNet++ model factory | Implemented |
+| BCE + soft-Dice training and Florence validation | Implemented |
+| MC-dropout and ensemble inference utilities | Implemented |
+| ECE, Brier score, risk-coverage, AURC, and sparsification error | Implemented and tested |
+| Full ETCI baseline replication | Pending compute run |
+| Efficiency and deployment benchmarks | Planned |
+| Cross-region evaluation | Planned; external event preparation required |
 
 ## Repository layout
 
-```
-sar-flood-uq/
-├── configs/                    # experiment configs (YAML)
-│   ├── baseline_unetpp_b7.yaml       # Phase 1: replication anchor
-│   └── lightweight_unet_b0.yaml      # Phase 2: lightweight candidate
-├── src/sarflood/
-│   ├── data/dataset.py         # ETCI dataset, ratio channel, rotation aug, stratified batches
-│   ├── models/                 # model factory + dropout injection + MC-dropout inference
-│   ├── training/               # BCE+Dice loss, metrics, training loop
-│   ├── uncertainty/            # deep ensembles, calibration (ECE/Brier), risk–coverage/AURC
-│   └── evaluation/             # region evaluation + statistics (Wilcoxon, bootstrap, McNemar)
-├── scripts/                    # CLI entry points (train / evaluate / predict-uncertainty)
-├── notebooks/                  # analysis & visualization notebooks
-└── tests/                      # CPU smoke tests
+```text
+.
+|-- configs/                 # Baseline and lightweight experiment definitions
+|-- notebooks/               # Colab entry point and notebook guide
+|-- scripts/                 # Download, train, evaluate, and UQ commands
+|-- src/sarflood/
+|   |-- data/                # ETCI discovery, channels, augmentation, sampling
+|   |-- models/              # UNet/UNet++ factory and stochastic inference
+|   |-- training/            # Losses, metrics, and training loop
+|   |-- uncertainty/         # Calibration and selective-prediction analysis
+|   `-- evaluation/          # Evaluation orchestration and paired statistics
+|-- tests/                   # Synthetic-data and CPU model smoke tests
+`-- pyproject.toml           # Package metadata and bounded dependencies
 ```
 
-## Setup
+## Installation
+
+Python 3.10 or newer is recommended.
 
 ```bash
-git clone <your-fork-url> && cd sar-flood-uq
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+git clone https://github.com/nazizahed/Uncertainty-Aware-Flood-Segmentation-from-Sentinel-1-for-Near-Real-Time-Applications.git
+cd Uncertainty-Aware-Flood-Segmentation-from-Sentinel-1-for-Near-Real-Time-Applications
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 ```
+
+For CUDA training, install a PyTorch build compatible with the available GPU
+before installing the remaining project dependencies.
 
 ## Data
 
-Training/validation uses the **NASA IMPACT / IEEE GRSS ETCI 2021 flood detection dataset**
-(Sentinel-1 IW, VV+VH, 256×256 tiles). Download links are listed on the competition page
-(IEEE GRSS Data Fusion Contest / NASA IMPACT). Expected directory layout
-(`src/sarflood/data/dataset.py` is tolerant to naming variants):
+The project uses the [NASA IMPACT / IEEE GRSS ETCI 2021 Flood Detection
+dataset](https://nasa-impact.github.io/etci2021/): paired Sentinel-1 IW VV/VH
+tiles and binary flood labels from five regions. Follow the official competition
+page for access conditions, acknowledgement text, and terms of use.
 
-```
-data/etci/
-├── nebraska/        ├── vv/  ├── vh/  └── flood_label/
-├── north_alabama/   ├── vv/  ├── vh/  └── flood_label/
-├── bangladesh/      ├── vv/  ├── vh/  └── flood_label/
-└── florence/        ├── vv/  ├── vh/  └── flood_label/   # held out as validation (8,382 tiles)
-```
-
-Notes:
-- The released tiles are already preprocessed (border-noise correction, speckle filtering,
-  RTC with 30 m DEM, dB scaling, 0–255 grayscale) — no SNAP/hyp3 processing needed for
-  training data, only for new cross-regional test events.
-- Following Ghosh et al., a third channel `(VV+VH)/(VV−VH)` is computed on the fly
-  (`bands: [vv, vh, ratio]` in the config).
-
-## Quickstart
+The optional download helper retrieves a documented community mirror. Review
+the official terms before using it:
 
 ```bash
-# Phase 1 — replicate baseline (anchor for all comparisons)
-python scripts/train.py --config configs/baseline_unetpp_b7.yaml
-
-# Phase 2 — lightweight model
-python scripts/train.py --config configs/lightweight_unet_b0.yaml
-
-# Phase 3 — uncertainty maps (MC dropout, N stochastic passes)
-python scripts/predict_uncertainty.py --checkpoint runs/<run>/best.pt --method mc_dropout --passes 20
-
-# Phase 4 — evaluation: metrics + calibration + risk–coverage + stats
-python scripts/evaluate.py --checkpoint runs/<run>/best.pt --split val
+python scripts/download_data.py --out data/etci
 ```
 
-Model selection follows the baseline: the checkpoint with the highest **F1 + mIoU** sum on
-validation is kept as `best.pt`.
+The loader recursively supports both the official event layout and the mirror's
+additional `data/<split>/<event>/tiles/` nesting. Event directories must contain
+`vv/`, `vh/`, and `flood_label/` subdirectories. Data and generated model
+artifacts are excluded from Git.
 
-## Baseline reference numbers (Ghosh et al. 2024, UNet++ EfficientNet-B7)
+## Reproducible starting points
 
-| Split | Acc | Prec | Rec | F1 | IoU | Kappa |
-|---|---|---|---|---|---|---|
-| Florence (val) | 98.8 | 89.5 | 89.1 | 89.3 | 75.76 | 81.6 |
-| Spain 2019 | 98.8 | 82.8 | 86.4 | 84.5 | 73.0 | 80.5 |
-| Kerala 2018 | 97.7 | 84.0 | 87.3 | 85.6 | 74.1 | 80.8 |
-| Bihar 2021 | 98.5 | 89.7 | 89.4 | 89.5 | 74.7 | 80.3 |
+```bash
+# Quick CPU-level integrity and model tests
+python -m pytest -q
+python scripts/validate_repository.py
 
-Replication targets: IoU within ~1–2 points of these on each split.
+# Phase 1 replication anchor
+python scripts/train.py --config configs/baseline_unetpp_b7.yaml
 
-## Methodological notes (deviations from the baseline, by design)
+# Lightweight candidate
+python scripts/train.py --config configs/lightweight_unet_b0.yaml
 
-- **Statistics:** baseline used pixel-level McNemar; we additionally report per-tile Wilcoxon
-  signed-rank tests and block-bootstrap CIs (pixel-level tests are inflated by spatial
-  autocorrelation). McNemar is still computed for direct comparability.
-- **Uncertainty exploitation** is evaluated with risk–coverage curves / AURC and sparsification
-  error, not "mask top-X% pixels and recompute precision" (that framing conflates abstention
-  with accuracy).
-- **Deep ensembles are the primary UQ method** (MC dropout as the cheap baseline), because
-  cross-regional testing is exactly the distribution-shift regime where MC dropout degrades.
+# Deterministic Florence evaluation
+python scripts/evaluate.py \
+  --checkpoint runs/baseline_unetpp_efficientnetb7/best.pt \
+  --regions florence \
+  --out runs/baseline_unetpp_efficientnetb7/florence.json
 
-## Roadmap
+# MC-dropout uncertainty preview
+python scripts/predict_uncertainty.py \
+  --checkpoint runs/baseline_unetpp_efficientnetb7/best.pt \
+  --regions florence \
+  --method mc_dropout \
+  --passes 20 \
+  --out outputs/uncertainty/florence
+```
 
-- [x] Repo scaffold, data pipeline, model zoo, training loop
-- [x] MC dropout / deep ensemble / calibration / risk–coverage tooling
-- [ ] Phase 1: baseline replication runs
-- [ ] Phase 2: efficiency frontier (params/FLOPs/latency CPU+GPU/quantization)
-- [ ] Phase 3: ensemble training, aleatoric/epistemic decomposition
-- [ ] Phase 4: cross-regional evaluation + land-cover-stratified uncertainty analysis
-- [ ] Phase 5: ablations (bands, dropout placement/rate, ensemble size)
+The Colab workflow is documented in [`notebooks/README.md`](notebooks/README.md).
 
-## License
+## Evaluation design
 
-MIT (code). Dataset is subject to the ETCI 2021 / NASA IMPACT terms of use.
+- Florence is held out from model fitting, following the reference study's
+  geographic validation setup.
+- Segmentation reporting includes pooled accuracy, precision, recall, F1, IoU,
+  kappa, boundary F1, and mean per-tile IoU.
+- Calibration uses ECE and Brier score on a bounded, reproducible pixel sample
+  to avoid retaining the full validation set in memory.
+- Selective prediction uses risk-coverage curves, AURC, and sparsification
+  error; lower AURC indicates that abstaining on uncertain pixels reduces risk.
+- Model comparisons are planned at tile level with paired Wilcoxon tests and
+  bootstrap confidence intervals. Pixel-level McNemar results are retained only
+  for comparison with earlier work because spatial autocorrelation inflates
+  nominal pixel counts.
+
+## Development roadmap
+
+- [x] Repository and experiment scaffold
+- [x] ETCI pairing, augmentation, ratio channel, and stratified sampling
+- [x] Model, training, evaluation, calibration, and risk-coverage utilities
+- [x] Synthetic dataset tests and CI
+- [ ] Baseline replication and recorded environment snapshot
+- [ ] Lightweight accuracy-efficiency frontier
+- [ ] Deep-ensemble training and uncertainty decomposition
+- [ ] Cross-region evaluation and failure-mode analysis
+- [ ] Latency, throughput, quantization, and deployment benchmarks
+- [ ] Publish versioned results and model cards
+
+## Research integrity and scope
+
+Published values discussed in notebooks are reference values from Ghosh et al.
+(2024), not results produced by this repository. Until completed runs and their
+artifacts are versioned, the repository should be cited as an ongoing software
+and research-method development project.
+
+Code is released under the [MIT License](LICENSE). The dataset and upstream
+model weights retain their own licences and usage conditions.
