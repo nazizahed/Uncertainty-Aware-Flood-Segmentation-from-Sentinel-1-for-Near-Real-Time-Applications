@@ -1,6 +1,6 @@
-# sar-flood-uq
+# Small Models, Honest Maps
 
-**Lightweight, uncertainty-aware flood segmentation from Sentinel-1 SAR**
+**Uncertainty-Aware Lightweight Flood Segmentation from Sentinel-1** (`sar-flood-uq`)
 
 Independent research project building on Ghosh et al. (2024), *"Automatic Flood Detection from
 Sentinel-1 Data Using a Nested UNet Model and a NASA Benchmark Dataset"*, PFG 92:1–18,
