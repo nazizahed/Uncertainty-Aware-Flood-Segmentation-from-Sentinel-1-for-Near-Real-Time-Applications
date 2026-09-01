@@ -1,0 +1,33 @@
+# Phase 2 — Lightweight candidate: UNet with EfficientNet-B0
+# Identical protocol to the baseline so differences are attributable to the encoder.
+experiment_name: lightweight_unet_efficientnetb0
+seed: 42
+
+data:
+  root: data/etci
+  regions: [nebraska, north_alabama, bangladesh]
+  val_regions: [florence]
+  bands: [vv, vh, ratio]
+  image_size: 256
+  stratified_flood_fraction: 0.5
+  rotation_aug: true
+
+model:
+  arch: unet
+  encoder: efficientnet-b0
+  encoder_weights: imagenet
+  dropout: 0.2
+
+training:
+  epochs: 100
+  batch_size: 64
+  optimizer: adam
+  lr: 3.0e-4
+  weight_decay: 0.0
+  scheduler: none
+  loss: bce_dice
+  amp: true
+  num_workers: 8
+  eval_score: f1_plus_iou
+
+output_dir: runs

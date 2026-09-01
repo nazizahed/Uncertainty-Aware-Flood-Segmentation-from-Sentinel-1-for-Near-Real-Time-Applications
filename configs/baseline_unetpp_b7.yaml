@@ -1,0 +1,32 @@
+# Phase 1 — Baseline replication anchor: UNet++ with EfficientNet-B7 (Ghosh et al. 2024)
+experiment_name: baseline_unetpp_efficientnetb7
+seed: 42
+
+data:
+  root: data/etci
+  regions: [nebraska, north_alabama, bangladesh]   # train; florence held out for val
+  val_regions: [florence]
+  bands: [vv, vh, ratio]        # ratio = (VV+VH)/(VV-VH), per Ghosh et al. (best combination)
+  image_size: 256
+  stratified_flood_fraction: 0.5   # >=50% flood-positive tiles per batch (baseline protocol)
+  rotation_aug: true               # 90/180/270 deg rotations
+
+model:
+  arch: unetplusplus              # unet | unetplusplus
+  encoder: efficientnet-b7
+  encoder_weights: imagenet
+  dropout: 0.2                    # decoder dropout (used for MC dropout in Phase 3)
+
+training:
+  epochs: 100
+  batch_size: 64
+  optimizer: adam
+  lr: 3.0e-4
+  weight_decay: 0.0
+  scheduler: none                 # baseline used none; option: cosine | plateau
+  loss: bce_dice
+  amp: true
+  num_workers: 8
+  eval_score: f1_plus_iou         # model-selection metric, per baseline
+
+output_dir: runs

@@ -1,0 +1,23 @@
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# data & artifacts (never commit large data or weights)
+data/
+runs/
+checkpoints/
+*.pt
+*.pth
+*.ckpt
+*.onnx
+wandb/
+*.tfevents*
+
+# notebooks
+.ipynb_checkpoints/
+
+# os
+.DS_Store
