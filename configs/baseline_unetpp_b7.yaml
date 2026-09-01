@@ -4,7 +4,7 @@ seed: 42
 
 data:
   root: data/etci
-  regions: [nebraska, north_alabama, bangladesh]   # train; florence held out for val
+  regions: [nebraska, north_alabama, bangladesh, redrivernorth]  # train = all non-Florence tiles (~25k), per baseline
   val_regions: [florence]
   bands: [vv, vh, ratio]        # ratio = (VV+VH)/(VV-VH), per Ghosh et al. (best combination)
   image_size: 256

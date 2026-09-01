@@ -5,7 +5,7 @@ seed: 42
 
 data:
   root: data/etci
-  regions: [nebraska, north_alabama, bangladesh]
+  regions: [nebraska, north_alabama, bangladesh, redrivernorth]
   val_regions: [florence]
   bands: [vv, vh, ratio]
   image_size: 256
