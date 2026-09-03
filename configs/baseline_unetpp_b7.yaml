@@ -1,22 +1,25 @@
-# Phase 1 — Baseline replication anchor: UNet++ with EfficientNet-B7 (Ghosh et al. 2024)
+# Phase 1 — Reference-aligned anchor: standard SMP UNet++ with EfficientNet-B7.
+# This follows the Ghosh et al. (2024) data/input/training conventions where
+# practical, but it is NOT an exact architectural replication of their custom
+# pruned, deeply-supervised UNet++ implementation.
 experiment_name: baseline_unetpp_efficientnetb7
 seed: 42
 
 data:
   root: data/etci
-  regions: [nebraska, north_alabama, bangladesh, redrivernorth]  # train = all non-Florence tiles (~25k), per baseline
+  regions: [nebraska, north_alabama, bangladesh, redrivernorth]
   val_regions: [florence]
-  bands: [vv, vh, ratio]        # ratio = (VV+VH)/(VV-VH), per Ghosh et al. (best combination)
-  ratio_clip: 10.0              # stabilize and scale the ratio channel to [-1, 1]
+  bands: [vv, vh, ratio]
+  ratio_clip: 10.0
   image_size: 256
-  stratified_flood_fraction: 0.5   # >=50% flood-positive tiles per batch (baseline protocol)
-  rotation_aug: true               # 90/180/270 deg rotations
+  stratified_flood_fraction: 0.5
+  rotation_aug: true
 
 model:
-  arch: unetplusplus              # unet | unetplusplus
+  arch: unetplusplus
   encoder: efficientnet-b7
   encoder_weights: imagenet
-  dropout: 0.2                    # decoder dropout (used for MC dropout in Phase 3)
+  dropout: 0.2
 
 training:
   epochs: 100
@@ -24,10 +27,10 @@ training:
   optimizer: adam
   lr: 3.0e-4
   weight_decay: 0.0
-  scheduler: none                 # baseline used none; option: cosine | plateau
+  scheduler: none
   loss: bce_dice
   amp: true
   num_workers: 8
-  eval_score: f1_plus_iou         # model-selection metric, per baseline
+  eval_score: f1_plus_mean_tile_iou
 
 output_dir: runs
