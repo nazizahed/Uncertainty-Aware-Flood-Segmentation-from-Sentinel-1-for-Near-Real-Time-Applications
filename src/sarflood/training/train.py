@@ -27,12 +27,7 @@ def set_seed(seed: int) -> None:
 
 @torch.no_grad()
 def validate(model, loader, device, loss_fn) -> tuple[dict, float]:
-    """Validate with genuinely per-tile metrics.
-
-    SegmentationMetrics.update is intentionally called once per image. Passing an
-    entire batch would make ``per_tile_iou`` a per-batch quantity and would also
-    make boundary morphology treat the batch axis as a spatial dimension.
-    """
+    """Validate with genuinely per-tile metrics."""
     model.eval()
     metrics = SegmentationMetrics()
     total_loss, n = 0.0, 0
@@ -61,12 +56,23 @@ def train(cfg: dict) -> Path:
     in_channels = len(cfg["data"]["bands"])
     model = build_model(cfg["model"], in_channels).to(device)
     n_params, size_mb = count_parameters(model), model_size_mb(model)
-    print(f"model: {cfg['model']['arch']}/{cfg['model']['encoder']}  "
-          f"params={n_params/1e6:.2f}M  size={size_mb:.1f}MB (fp32)")
 
     tcfg = cfg["training"]
-    opt = torch.optim.Adam(model.parameters(), lr=tcfg["lr"],
-                           weight_decay=tcfg.get("weight_decay", 0.0))
+    accumulation_steps = max(1, int(tcfg.get("gradient_accumulation_steps", 1)))
+    batch_size = int(tcfg["batch_size"])
+    effective_batch = batch_size * accumulation_steps
+    print(
+        f"model: {cfg['model']['arch']}/{cfg['model']['encoder']}  "
+        f"params={n_params/1e6:.2f}M  size={size_mb:.1f}MB (fp32)  "
+        f"batch={batch_size} x accumulation={accumulation_steps} "
+        f"=> effective_batch={effective_batch}"
+    )
+
+    opt = torch.optim.Adam(
+        model.parameters(),
+        lr=tcfg["lr"],
+        weight_decay=tcfg.get("weight_decay", 0.0),
+    )
     scheduler = None
     if tcfg.get("scheduler") == "cosine":
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=tcfg["epochs"])
@@ -77,24 +83,36 @@ def train(cfg: dict) -> Path:
     with open(log_path, "w", newline="") as f:
         csv.writer(f).writerow(
             ["epoch", "train_loss", "val_loss", "accuracy", "precision", "recall",
-             "f1", "iou", "miou_tiles", "kappa", "boundary_f1", "eval_score", "seconds"])
+             "f1", "iou", "miou_tiles", "kappa", "boundary_f1", "eval_score", "seconds"]
+        )
 
     best_score = -np.inf
     for epoch in range(1, tcfg["epochs"] + 1):
         model.train()
         t0, train_loss, n = time.time(), 0.0, 0
-        for batch in tqdm(train_loader, desc=f"epoch {epoch}/{tcfg['epochs']}", leave=False):
+        opt.zero_grad(set_to_none=True)
+        n_batches = len(train_loader)
+
+        for batch_index, batch in enumerate(
+            tqdm(train_loader, desc=f"epoch {epoch}/{tcfg['epochs']}", leave=False), start=1
+        ):
             img = batch["image"].to(device, non_blocking=True)
             mask = batch["mask"].to(device, non_blocking=True)
-            opt.zero_grad(set_to_none=True)
             with torch.cuda.amp.autocast(enabled=scaler.is_enabled()):
                 logits = model(img)
-                loss = loss_fn(logits, mask)
+                raw_loss = loss_fn(logits, mask)
+                loss = raw_loss / accumulation_steps
+
             scaler.scale(loss).backward()
-            scaler.step(opt)
-            scaler.update()
-            train_loss += loss.item() * img.size(0)
+            should_step = (batch_index % accumulation_steps == 0) or (batch_index == n_batches)
+            if should_step:
+                scaler.step(opt)
+                scaler.update()
+                opt.zero_grad(set_to_none=True)
+
+            train_loss += raw_loss.item() * img.size(0)
             n += img.size(0)
+
         if scheduler is not None:
             scheduler.step()
 
@@ -106,17 +124,23 @@ def train(cfg: dict) -> Path:
                round(score, 5), round(time.time() - t0, 1)]
         with open(log_path, "a", newline="") as f:
             csv.writer(f).writerow(row)
-        print(f"epoch {epoch}: val_loss={val_loss:.4f} pooled_IoU={val_metrics['iou']:.4f} "
-              f"mIoU_tiles={val_metrics['miou_tiles']:.4f} F1={val_metrics['f1']:.4f} "
-              f"score={score:.4f}")
+        print(
+            f"epoch {epoch}: val_loss={val_loss:.4f} pooled_IoU={val_metrics['iou']:.4f} "
+            f"mIoU_tiles={val_metrics['miou_tiles']:.4f} F1={val_metrics['f1']:.4f} "
+            f"score={score:.4f}"
+        )
 
         if score > best_score:
             best_score = score
-            torch.save({"model_state": model.state_dict(), "config": cfg,
-                        "epoch": epoch, "val_metrics": val_metrics},
-                       out_dir / "best.pt")
-        torch.save({"model_state": model.state_dict(), "config": cfg, "epoch": epoch},
-                   out_dir / "last.pt")
+            torch.save(
+                {"model_state": model.state_dict(), "config": cfg,
+                 "epoch": epoch, "val_metrics": val_metrics},
+                out_dir / "best.pt",
+            )
+        torch.save(
+            {"model_state": model.state_dict(), "config": cfg, "epoch": epoch},
+            out_dir / "last.pt",
+        )
 
     print(f"done. best F1+mean-tile-IoU={best_score:.4f}  checkpoints in {out_dir}")
     return out_dir
