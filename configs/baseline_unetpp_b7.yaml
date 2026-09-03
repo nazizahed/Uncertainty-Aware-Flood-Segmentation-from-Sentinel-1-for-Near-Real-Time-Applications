@@ -1,8 +1,11 @@
-# Phase 1 — Reference-aligned anchor: standard SMP UNet++ with EfficientNet-B7.
+# Optional heavy reference-aligned anchor: standard SMP UNet++ + EfficientNet-B7.
 # This follows the Ghosh et al. (2024) data/input/training conventions where
 # practical, but it is NOT an exact architectural replication of their custom
 # pruned, deeply-supervised UNet++ implementation.
-experiment_name: baseline_unetpp_efficientnetb7
+#
+# The project does not depend on this run. Attempt it only when sufficient GPU
+# time is available; the lightweight experiments are the primary study.
+experiment_name: optional_anchor_unetpp_efficientnetb7
 seed: 42
 
 data:
@@ -23,14 +26,15 @@ model:
 
 training:
   epochs: 100
-  batch_size: 64
+  batch_size: 2
+  gradient_accumulation_steps: 16  # effective batch = 32; reduce to 1 if needed
   optimizer: adam
   lr: 3.0e-4
   weight_decay: 0.0
   scheduler: none
   loss: bce_dice
   amp: true
-  num_workers: 8
+  num_workers: 2
   eval_score: f1_plus_mean_tile_iou
 
 output_dir: runs

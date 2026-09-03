@@ -1,6 +1,5 @@
-# Core resource-aware candidate: UNet with EfficientNet-B0
-# Designed to run on free-tier Colab/Kaggle GPUs with AMP and gradient accumulation.
-experiment_name: lightweight_unet_efficientnetb0
+# Intermediate resource-aware candidate: UNet with EfficientNet-B2
+experiment_name: lightweight_unet_efficientnetb2
 seed: 42
 
 data:
@@ -15,7 +14,7 @@ data:
 
 model:
   arch: unet
-  encoder: efficientnet-b0
+  encoder: efficientnet-b2
   encoder_weights: imagenet
   dropout: 0.2
 
