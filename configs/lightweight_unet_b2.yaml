@@ -1,0 +1,34 @@
+# Intermediate resource-aware candidate: UNet with EfficientNet-B2
+experiment_name: lightweight_unet_efficientnetb2
+seed: 42
+
+data:
+  root: data/etci
+  regions: [nebraska, north_alabama, bangladesh, redrivernorth]
+  val_regions: [florence]
+  bands: [vv, vh, ratio]
+  ratio_clip: 10.0
+  image_size: 256
+  stratified_flood_fraction: 0.5
+  rotation_aug: true
+
+model:
+  arch: unet
+  encoder: efficientnet-b2
+  encoder_weights: imagenet
+  dropout: 0.2
+
+training:
+  epochs: 60
+  batch_size: 8
+  gradient_accumulation_steps: 4   # effective batch = 32
+  optimizer: adam
+  lr: 3.0e-4
+  weight_decay: 0.0
+  scheduler: cosine
+  loss: bce_dice
+  amp: true
+  num_workers: 2
+  eval_score: f1_plus_mean_tile_iou
+
+output_dir: runs
