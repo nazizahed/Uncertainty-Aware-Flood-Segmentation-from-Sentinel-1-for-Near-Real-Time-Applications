@@ -1,12 +1,5 @@
 #!/usr/bin/env python
-"""Generate uncertainty maps (MC dropout or deep ensemble) for a dataset split.
-
-Usage:
-  python scripts/predict_uncertainty.py --checkpoint runs/<run>/best.pt --regions florence \
-      --method mc_dropout --passes 20 --out outputs/uncertainty/florence
-  python scripts/predict_uncertainty.py --checkpoints runs/seed{1..5}/best.pt \
-      --regions spain2019 --method ensemble --out outputs/uncertainty/spain2019
-"""
+"""Generate uncertainty maps (MC dropout or deep ensemble) for a dataset split."""
 
 import argparse
 import sys
@@ -20,7 +13,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from sarflood.data.dataset import ETCIFloodDataset  # noqa: E402
 from sarflood.evaluation.evaluate import load_checkpoint  # noqa: E402
 from sarflood.models.uncertainty_inference import (  # noqa: E402
-    ensemble_forward_passes, stochastic_forward_passes, summarize_passes,
+    ensemble_forward_passes,
+    stochastic_forward_passes,
+    summarize_passes,
 )
 
 
@@ -43,31 +38,40 @@ def main():
     if args.method == "ensemble":
         assert args.checkpoints, "ensemble requires --checkpoints"
         models, cfg = [], None
-        for p in args.checkpoints:
-            m, cfg = load_checkpoint(p, device)
-            models.append(m)
+        for checkpoint in args.checkpoints:
+            model, cfg = load_checkpoint(checkpoint, device)
+            models.append(model)
     else:
         assert args.checkpoint, "mc_dropout requires --checkpoint"
         model, cfg = load_checkpoint(args.checkpoint, device)
 
-    ds = ETCIFloodDataset(cfg["data"]["root"], args.regions, cfg["data"]["bands"],
-                          rotation_aug=False)
+    ds = ETCIFloodDataset(
+        cfg["data"]["root"],
+        args.regions,
+        cfg["data"]["bands"],
+        rotation_aug=False,
+        image_size=cfg["data"].get("image_size", 256),
+        ratio_clip=cfg["data"].get("ratio_clip", 10.0),
+    )
     loader = DataLoader(ds, batch_size=args.batch_size, shuffle=False, num_workers=4)
 
     for batch in loader:
         img = batch["image"].to(device)
         if args.method == "ensemble":
-            passes = ensemble_forward_passes(models, img)          # (M,B,1,H,W)
+            passes = ensemble_forward_passes(models, img)
         else:
             passes = stochastic_forward_passes(model, img, args.passes)
-        s = summarize_passes(passes)
-        mean, var, ent = s["mean"].cpu().numpy(), s["variance"].cpu().numpy(), s["entropy"].cpu().numpy()
+        summary = summarize_passes(passes)
+
+        arrays = {name: value.cpu().numpy() for name, value in summary.items() if name != "entropy"}
         for i, tile_id in enumerate(batch["id"]):
             np.savez_compressed(
                 out / f"{tile_id}.npz",
-                flood_prob=mean[i, 0].astype(np.float32),
-                epistemic_var=var[i, 0].astype(np.float32),
-                entropy=ent[i, 0].astype(np.float32),
+                flood_prob=arrays["mean"][i, 0].astype(np.float32),
+                disagreement_variance=arrays["variance"][i, 0].astype(np.float32),
+                predictive_entropy=arrays["predictive_entropy"][i, 0].astype(np.float32),
+                expected_entropy=arrays["expected_entropy"][i, 0].astype(np.float32),
+                mutual_information=arrays["mutual_information"][i, 0].astype(np.float32),
                 label=batch["mask"][i, 0].numpy(),
             )
     print(f"wrote {len(ds)} tiles to {out}")
