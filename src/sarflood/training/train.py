@@ -1,4 +1,4 @@
-"""Training loop: Adam, BCE+Dice, AMP, model selection by F1+IoU (baseline protocol)."""
+"""Training loop: Adam, BCE+Dice, AMP, model selection by F1+mean tile IoU."""
 
 from __future__ import annotations
 
@@ -27,6 +27,12 @@ def set_seed(seed: int) -> None:
 
 @torch.no_grad()
 def validate(model, loader, device, loss_fn) -> tuple[dict, float]:
+    """Validate with genuinely per-tile metrics.
+
+    SegmentationMetrics.update is intentionally called once per image. Passing an
+    entire batch would make ``per_tile_iou`` a per-batch quantity and would also
+    make boundary morphology treat the batch axis as a spatial dimension.
+    """
     model.eval()
     metrics = SegmentationMetrics()
     total_loss, n = 0.0, 0
@@ -36,7 +42,10 @@ def validate(model, loader, device, loss_fn) -> tuple[dict, float]:
         logits = model(img)
         total_loss += loss_fn(logits, mask).item() * img.size(0)
         n += img.size(0)
-        metrics.update(torch.sigmoid(logits).cpu().numpy(), mask.cpu().numpy())
+        probs = torch.sigmoid(logits).cpu().numpy()
+        targets = mask.cpu().numpy()
+        for i in range(img.size(0)):
+            metrics.update(probs[i], targets[i])
     return metrics.compute(), total_loss / max(n, 1)
 
 
@@ -68,7 +77,7 @@ def train(cfg: dict) -> Path:
     with open(log_path, "w", newline="") as f:
         csv.writer(f).writerow(
             ["epoch", "train_loss", "val_loss", "accuracy", "precision", "recall",
-             "f1", "iou", "kappa", "boundary_f1", "eval_score", "seconds"])
+             "f1", "iou", "miou_tiles", "kappa", "boundary_f1", "eval_score", "seconds"])
 
     best_score = -np.inf
     for epoch in range(1, tcfg["epochs"] + 1):
@@ -93,12 +102,13 @@ def train(cfg: dict) -> Path:
         score = eval_score(val_metrics)
         row = [epoch, train_loss / max(n, 1), val_loss,
                *[round(val_metrics[k], 5) for k in
-                 ("accuracy", "precision", "recall", "f1", "iou", "kappa", "boundary_f1")],
+                 ("accuracy", "precision", "recall", "f1", "iou", "miou_tiles", "kappa", "boundary_f1")],
                round(score, 5), round(time.time() - t0, 1)]
         with open(log_path, "a", newline="") as f:
             csv.writer(f).writerow(row)
-        print(f"epoch {epoch}: val_loss={val_loss:.4f} IoU={val_metrics['iou']:.4f} "
-              f"F1={val_metrics['f1']:.4f} score={score:.4f}")
+        print(f"epoch {epoch}: val_loss={val_loss:.4f} pooled_IoU={val_metrics['iou']:.4f} "
+              f"mIoU_tiles={val_metrics['miou_tiles']:.4f} F1={val_metrics['f1']:.4f} "
+              f"score={score:.4f}")
 
         if score > best_score:
             best_score = score
@@ -108,5 +118,5 @@ def train(cfg: dict) -> Path:
         torch.save({"model_state": model.state_dict(), "config": cfg, "epoch": epoch},
                    out_dir / "last.pt")
 
-    print(f"done. best F1+IoU={best_score:.4f}  checkpoints in {out_dir}")
+    print(f"done. best F1+mean-tile-IoU={best_score:.4f}  checkpoints in {out_dir}")
     return out_dir

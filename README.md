@@ -7,9 +7,10 @@
 > **Development status:** this independent research project is under active
 > development. The data pipeline, model factory, training loop, uncertainty
 > utilities, evaluation code, configurations, and Colab entry point are
-> implemented. Full baseline replication, efficiency benchmarks, ensemble
-> experiments, and cross-region results are still pending. This repository does
-> not yet claim original model-performance or near-real-time latency results.
+> implemented. Full reference-aligned baseline runs, efficiency benchmarks,
+> ensemble experiments, and cross-region results are still pending. This
+> repository does not yet claim original model-performance or near-real-time
+> latency results.
 
 The project investigates whether lightweight semantic-segmentation models can
 produce useful Sentinel-1 flood maps while making their uncertainty explicit.
@@ -18,28 +19,40 @@ Data Using a Nested UNet Model and a NASA Benchmark
 Dataset*](https://doi.org/10.1007/s41064-024-00275-1), while using a PyTorch
 implementation and an explicitly staged evaluation plan.
 
+The current UNet++/EfficientNet-B7 configuration is **reference-aligned rather
+than an exact architectural replication**. It reproduces the dataset split,
+input channels, augmentation, flood-stratified sampling, optimizer/loss family,
+and main evaluation conventions, but it uses the standard
+`segmentation_models_pytorch` UNet++ rather than the reference paper's custom
+pruned/deeply-supervised implementation. Exact replication should only be
+claimed if those architecture and model-selection details are reproduced.
+
 ## Research questions
 
 1. **Efficiency:** where is the accuracy-efficiency frontier across model size,
-   FLOPs, and CPU/GPU inference latency?
-2. **Uncertainty:** do deep ensembles or MC dropout produce calibrated
-   uncertainty that supports selective prediction through risk-coverage
-   analysis?
-3. **Generalization:** how do candidate models and uncertainty estimates behave
-   when transferred to geographically distinct flood events?
+   FLOPs, memory, and CPU/GPU inference latency?
+2. **Reliability:** how much do deterministic confidence, MC dropout, and deep
+   ensembles improve calibration and failure ranking relative to their extra
+   inference cost?
+3. **Generalization:** how do segmentation quality and uncertainty estimates
+   degrade under geographic distribution shift?
+4. **Selective prediction:** when can the model abstain on uncertain pixels and
+   reduce risk on the retained flood map?
 
 Near-real-time use is a design objective. It will only be claimed after latency,
-throughput, preprocessing, and end-to-end deployment measurements are complete.
+throughput, preprocessing, stitching, and end-to-end deployment measurements
+are complete.
 
 ## Implemented workflow
 
 ```mermaid
 flowchart TD
-    A["ETCI 2021 VV, VH, labels"] --> B["Paired tiles + ratio channel"]
+    A["ETCI 2021 VV, VH, labels"] --> B["Paired tiles + stabilized ratio channel"]
     B --> C["UNet / UNet++ training"]
     C --> D["Deterministic or stochastic inference"]
-    D --> E["Segmentation + calibration metrics"]
-    E --> F["Risk-coverage and uncertainty maps"]
+    D --> E["Segmentation + calibration"]
+    E --> F["Uncertainty decomposition"]
+    F --> G["Risk-coverage + paired statistics"]
 ```
 
 | Component | Current state |
@@ -49,9 +62,13 @@ flowchart TD
 | Flood-stratified batches and 90-degree rotations | Implemented |
 | UNet and UNet++ model factory | Implemented |
 | BCE + soft-Dice training and Florence validation | Implemented |
-| MC-dropout and ensemble inference utilities | Implemented |
+| Per-tile IoU and boundary evaluation | Implemented |
+| Deterministic entropy/confidence baselines | Implemented |
+| MC-dropout predictive entropy, expected entropy, mutual information, variance | Implemented |
 | ECE, Brier score, risk-coverage, AURC, and sparsification error | Implemented and tested |
-| Full ETCI baseline replication | Pending compute run |
+| Tile-level Wilcoxon and grouped-bootstrap utilities | Implemented |
+| Full reference-aligned baseline run | Pending compute run |
+| Deep ensembles | Planned |
 | Efficiency and deployment benchmarks | Planned |
 | Cross-region evaluation | Planned; external event preparation required |
 
@@ -59,7 +76,7 @@ flowchart TD
 
 ```text
 .
-|-- configs/                 # Baseline and lightweight experiment definitions
+|-- configs/                 # Reference-aligned and lightweight experiments
 |-- notebooks/               # Colab entry point and notebook guide
 |-- scripts/                 # Download, train, evaluate, and UQ commands
 |-- src/sarflood/
@@ -114,25 +131,25 @@ artifacts are excluded from Git.
 python -m pytest -q
 python scripts/validate_repository.py
 
-# Phase 1 replication anchor
+# Phase 1 reference-aligned anchor
 python scripts/train.py --config configs/baseline_unetpp_b7.yaml
 
 # Lightweight candidate
 python scripts/train.py --config configs/lightweight_unet_b0.yaml
 
-# Deterministic Florence evaluation
+# Deterministic Florence evaluation, including deterministic uncertainty baselines
 python scripts/evaluate.py \
   --checkpoint runs/baseline_unetpp_efficientnetb7/best.pt \
   --regions florence \
   --out runs/baseline_unetpp_efficientnetb7/florence.json
 
-# MC-dropout uncertainty preview
-python scripts/predict_uncertainty.py \
+# MC-dropout evaluation: compares one-pass deterministic uncertainty with
+# predictive entropy, expected entropy, mutual information, and MC variance
+python scripts/evaluate.py \
   --checkpoint runs/baseline_unetpp_efficientnetb7/best.pt \
   --regions florence \
-  --method mc_dropout \
-  --passes 20 \
-  --out outputs/uncertainty/florence
+  --mc-passes 20 \
+  --out runs/baseline_unetpp_efficientnetb7/florence_mc20.json
 ```
 
 The Colab workflow is documented in [`notebooks/README.md`](notebooks/README.md).
@@ -140,29 +157,40 @@ The Colab workflow is documented in [`notebooks/README.md`](notebooks/README.md)
 ## Evaluation design
 
 - Florence is held out from model fitting, following the reference study's
-  geographic validation setup.
+  geographic holdout setup.
+- Validation metrics are updated **per tile**, avoiding accidental use of the
+  batch dimension as a spatial dimension in boundary metrics.
 - Segmentation reporting includes pooled accuracy, precision, recall, F1, IoU,
   kappa, boundary F1, and mean per-tile IoU.
-- Calibration uses ECE and Brier score on a bounded, reproducible pixel sample
-  to avoid retaining the full validation set in memory.
-- Selective prediction uses risk-coverage curves, AURC, and sparsification
-  error; lower AURC indicates that abstaining on uncertain pixels reduces risk.
-- Model comparisons are planned at tile level with paired Wilcoxon tests and
-  bootstrap confidence intervals. Pixel-level McNemar results are retained only
-  for comparison with earlier work because spatial autocorrelation inflates
-  nominal pixel counts.
+- Model selection uses pooled F1 + mean per-tile IoU.
+- Calibration uses ECE and Brier score on a bounded reproducible pixel sample,
+  with separate flood and non-flood reporting in addition to the overall score.
+- Selective prediction compares deterministic entropy/confidence against MC
+  predictive entropy, expected entropy, mutual information, and variance using
+  risk-coverage curves, AURC, and sparsification error.
+- The selective-prediction oracle is consistent with the reported zero-one
+  segmentation risk: erroneous pixels are removed before correct pixels.
+- Model comparisons use paired per-tile Wilcoxon tests. Confidence intervals can
+  use grouped bootstrap resampling when source-scene or event identifiers are
+  available; ordinary tile bootstrap is retained only for cases where tiles can
+  reasonably be treated as independent.
+- Pixel-level McNemar is retained only for comparison with earlier work because
+  spatial autocorrelation inflates nominal pixel counts.
 
 ## Development roadmap
 
 - [x] Repository and experiment scaffold
 - [x] ETCI pairing, augmentation, ratio channel, and stratified sampling
-- [x] Model, training, evaluation, calibration, and risk-coverage utilities
+- [x] Correct per-tile validation and model-selection metrics
+- [x] Deterministic and MC-dropout uncertainty decomposition
+- [x] Calibration and risk-coverage utilities
+- [x] Group-aware statistical comparison utilities
 - [x] Synthetic dataset tests and CI
-- [ ] Baseline replication and recorded environment snapshot
-- [ ] Lightweight accuracy-efficiency frontier
-- [ ] Deep-ensemble training and uncertainty decomposition
+- [ ] Reference-aligned baseline run and recorded environment snapshot
+- [ ] Lightweight reliability-efficiency frontier
+- [ ] Deep-ensemble training and comparison
 - [ ] Cross-region evaluation and failure-mode analysis
-- [ ] Latency, throughput, quantization, and deployment benchmarks
+- [ ] Latency, throughput, quantization, stitching, and deployment benchmarks
 - [ ] Publish versioned results and model cards
 
 ## Research integrity and scope
