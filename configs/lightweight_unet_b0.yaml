@@ -1,5 +1,5 @@
-# Phase 2 — Lightweight candidate: UNet with EfficientNet-B0
-# Identical protocol to the baseline so differences are attributable to the encoder.
+# Core resource-aware candidate: UNet with EfficientNet-B0
+# Designed to run on free-tier Colab/Kaggle GPUs with AMP and gradient accumulation.
 experiment_name: lightweight_unet_efficientnetb0
 seed: 42
 
@@ -20,15 +20,16 @@ model:
   dropout: 0.2
 
 training:
-  epochs: 100
-  batch_size: 64
+  epochs: 60
+  batch_size: 8
+  gradient_accumulation_steps: 4   # effective batch = 32
   optimizer: adam
   lr: 3.0e-4
   weight_decay: 0.0
-  scheduler: none
+  scheduler: cosine
   loss: bce_dice
   amp: true
-  num_workers: 8
-  eval_score: f1_plus_iou
+  num_workers: 2
+  eval_score: f1_plus_mean_tile_iou
 
 output_dir: runs
